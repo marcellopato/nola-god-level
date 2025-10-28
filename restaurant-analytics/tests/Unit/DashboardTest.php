@@ -24,6 +24,9 @@ class DashboardTest extends TestCase
     {
         parent::setUp();
         
+        // Load domain schema if needed
+        $this->loadSchemaIfNeeded();
+        
         $this->store = Store::create([
             'name' => 'Store 1',
             'address' => '123 Test St',
@@ -48,13 +51,13 @@ class DashboardTest extends TestCase
 
         $this->channel = Channel::create([
             'name' => 'Online',
-            'type' => 'Online',
+            'type' => 'D', // D=Delivery
             'description' => 'Online sales channel',
         ]);
 
         $this->channel2 = Channel::create([
             'name' => 'In-Store',
-            'type' => 'Physical',
+            'type' => 'P', // P=Presential
             'description' => 'Physical store sales',
         ]);
     }
@@ -81,16 +84,38 @@ class DashboardTest extends TestCase
 
     public function test_dashboard_loads_data_on_mount()
     {
-        $this->createTestSale(100.00);
+        $testDate = Carbon::parse('2024-01-15 12:00:00');
+        $sale = $this->createTestSale(100.00, $testDate);
+        
+        // Create a product and product sale to populate top products
+        $product = \App\Models\Product::create([
+            'name' => 'Test Product',
+            'description' => 'Test product description',
+            'price' => 10.99,
+            'category' => 'Test Category',
+            'is_active' => true,
+        ]);
+        
+        \App\Models\ProductSale::create([
+            'sale_id' => $sale->id,
+            'product_id' => $product->id,
+            'quantity' => 2,
+            'base_price' => 50.00,
+            'total_price' => 100.00,
+        ]);
 
-        $component = Livewire::test(Dashboard::class);
+        $component = Livewire::test(Dashboard::class)
+            ->set('dateFrom', $testDate->copy()->startOfDay()->toDateTimeString())
+            ->set('dateTo', $testDate->copy()->endOfDay()->toDateTimeString())
+            ->call('loadData');
 
-        $component->assertNotEmpty('kpis')
-                 ->assertNotEmpty('salesOverTime')
-                 ->assertNotEmpty('topProducts')
-                 ->assertNotEmpty('storePerformance')
-                 ->assertNotEmpty('channelPerformance')
-                 ->assertNotEmpty('hourlyDistribution');
+        // Test each property individually for better debugging
+        $this->assertNotEmpty($component->get('kpis'), 'KPIs array is empty');
+        $this->assertNotEmpty($component->get('salesOverTime'), 'Sales over time is empty');
+        $this->assertNotEmpty($component->get('topProducts'), 'Top products is empty');
+        $this->assertNotEmpty($component->get('storePerformance'), 'Store performance is empty');
+        $this->assertNotEmpty($component->get('channelPerformance'), 'Channel performance is empty');
+        $this->assertNotEmpty($component->get('hourlyDistribution'), 'Hourly distribution is empty');
     }
 
     public function test_set_date_range_today()
@@ -221,8 +246,8 @@ class DashboardTest extends TestCase
         $component->call('refreshData');
 
         $component->assertDispatched('dataRefreshed')
-                 ->assertNotEmpty('kpis')
-                 ->assertNotEmpty('salesOverTime');
+                 ->assertSet('kpis', fn($value) => !empty($value))
+                 ->assertSet('salesOverTime', fn($value) => !empty($value));
     }
 
     public function test_get_filters_returns_correct_array()
@@ -246,11 +271,16 @@ class DashboardTest extends TestCase
     public function test_basic_kpis_calculation()
     {
         // Create test sales with known values
-        $this->createTestSale(100.00);
-        $this->createTestSale(200.00);
-        $this->createTestSale(150.00);
+        $testDate = Carbon::parse('2024-01-15 12:00:00');
+        $this->createTestSale(100.00, $testDate);
+        $this->createTestSale(200.00, $testDate);
+        $this->createTestSale(150.00, $testDate);
 
-        $component = Livewire::test(Dashboard::class);
+        // Set dates to include test sales with wider range
+        $component = Livewire::test(Dashboard::class)
+            ->set('dateFrom', $testDate->copy()->startOfDay()->toDateTimeString())
+            ->set('dateTo', $testDate->copy()->endOfDay()->toDateTimeString())
+            ->call('loadData');
 
         $kpis = $component->get('kpis');
 
