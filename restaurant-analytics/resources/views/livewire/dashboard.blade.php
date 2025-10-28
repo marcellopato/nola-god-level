@@ -133,7 +133,7 @@
                     <div class="ml-5 w-0 flex-1">
                         <dl>
                             <dt class="text-sm font-medium text-gray-500 truncate">Ticket Médio</dt>
-                            <dd class="text-lg font-medium text-gray-900">R$ {{ $kpis['average_ticket'] ?? '0,00' }}</dd>
+                            <dd class="text-lg font-medium text-gray-900">R$ {{ $kpis['avg_ticket'] ?? '0,00' }}</dd>
                         </dl>
                     </div>
                 </div>
