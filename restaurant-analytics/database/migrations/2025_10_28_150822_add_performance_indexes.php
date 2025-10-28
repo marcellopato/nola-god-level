@@ -13,28 +13,35 @@ return new class extends Migration
     public function up(): void
     {
         // Índices críticos para performance do dashboard
+        // Verifica se as tabelas existem antes de criar os índices
         
-        // Índice composto para filtros mais comuns (data + status + loja)
-        DB::statement('CREATE INDEX IF NOT EXISTS idx_sales_date_status_store 
-                      ON sales (created_at, sale_status_desc, store_id) 
-                      WHERE sale_status_desc = \'COMPLETED\'');
+        if (Schema::hasTable('sales')) {
+            // Índice composto para filtros mais comuns (data + status + loja)
+            DB::statement('CREATE INDEX IF NOT EXISTS idx_sales_date_status_store 
+                          ON sales (created_at, sale_status_desc, store_id) 
+                          WHERE sale_status_desc = \'COMPLETED\'');
+            
+            // Índice composto para filtros de data + canal
+            DB::statement('CREATE INDEX IF NOT EXISTS idx_sales_date_status_channel 
+                          ON sales (created_at, sale_status_desc, channel_id) 
+                          WHERE sale_status_desc = \'COMPLETED\'');
+        }
         
-        // Índice composto para filtros de data + canal
-        DB::statement('CREATE INDEX IF NOT EXISTS idx_sales_date_status_channel 
-                      ON sales (created_at, sale_status_desc, channel_id) 
-                      WHERE sale_status_desc = \'COMPLETED\'');
+        if (Schema::hasTable('product_sales')) {
+            // Índices para product_sales (análise de produtos mais vendidos)
+            DB::statement('CREATE INDEX IF NOT EXISTS idx_product_sales_performance 
+                          ON product_sales (product_id, quantity, total_price)');
+            
+            // Índice para joins frequentes entre sales e product_sales
+            DB::statement('CREATE INDEX IF NOT EXISTS idx_product_sales_sale_product 
+                          ON product_sales (sale_id, product_id)');
+        }
         
-        // Índices para product_sales (análise de produtos mais vendidos)
-        DB::statement('CREATE INDEX IF NOT EXISTS idx_product_sales_performance 
-                      ON product_sales (product_id, quantity, total_price)');
-        
-        // Índice para joins frequentes entre sales e product_sales
-        DB::statement('CREATE INDEX IF NOT EXISTS idx_product_sales_sale_product 
-                      ON product_sales (sale_id, product_id)');
-        
-        // Índice para stores ativas (usado no KPI)
-        DB::statement('CREATE INDEX IF NOT EXISTS idx_stores_active 
-                      ON stores (is_active) WHERE is_active = true');
+        if (Schema::hasTable('stores')) {
+            // Índice para stores ativas (usado no KPI)
+            DB::statement('CREATE INDEX IF NOT EXISTS idx_stores_active 
+                          ON stores (is_active) WHERE is_active = true');
+        }
     }
 
     /**
