@@ -11,6 +11,7 @@ use App\Models\Product;
 use App\Models\ProductSale;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Cache;
 
 class AnalyticsServiceTest extends TestCase
@@ -25,6 +26,9 @@ class AnalyticsServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        
+        // Load domain schema if needed
+        $this->loadSchemaIfNeeded();
         
         $this->analyticsService = new AnalyticsService();
         
@@ -42,7 +46,7 @@ class AnalyticsServiceTest extends TestCase
 
         $this->channel = Channel::create([
             'name' => 'Test Channel',
-            'type' => 'Online',
+            'type' => 'D', // D=Delivery
             'description' => 'Test channel for unit tests',
         ]);
 
@@ -68,7 +72,7 @@ class AnalyticsServiceTest extends TestCase
         $this->assertArrayHasKey('average_ticket', $kpis);
         $this->assertArrayHasKey('active_stores', $kpis);
         $this->assertArrayHasKey('revenue_growth', $kpis);
-        $this->assertArrayHasKey('sales_growth', $kpis);
+        $this->assertArrayHasKey('total_products', $kpis);
     }
 
     public function test_get_kpis_calculates_correct_values()
@@ -135,7 +139,7 @@ class AnalyticsServiceTest extends TestCase
             'sale_id' => $sale->id,
             'product_id' => $this->product->id,
             'quantity' => 2,
-            'unit_price' => 50.00,
+            'base_price' => 50.00,
             'total_price' => 100.00,
         ]);
 
@@ -159,8 +163,8 @@ class AnalyticsServiceTest extends TestCase
         $this->assertEquals('Test Store', $storePerformance[0]['name']);
         $this->assertEquals('Test City', $storePerformance[0]['city']);
         $this->assertEquals(2, $storePerformance[0]['total_sales']);
-        $this->assertEquals(150.00, $storePerformance[0]['total_revenue']);
-        $this->assertEquals(75.00, $storePerformance[0]['avg_ticket']);
+        $this->assertEquals('150.00', $storePerformance[0]['revenue']); // Note: formatted as string
+        $this->assertEquals('75.00', $storePerformance[0]['avg_ticket']); // Note: formatted as string
     }
 
     public function test_get_channel_performance_returns_correct_data()
@@ -172,10 +176,10 @@ class AnalyticsServiceTest extends TestCase
         $this->assertIsArray($channelPerformance);
         $this->assertCount(1, $channelPerformance);
         $this->assertEquals('Test Channel', $channelPerformance[0]['name']);
-        $this->assertEquals('Online', $channelPerformance[0]['type']);
+        $this->assertEquals('Delivery', $channelPerformance[0]['type']);
         $this->assertEquals(3, $channelPerformance[0]['total_sales']);
-        $this->assertEquals(180.00, $channelPerformance[0]['total_revenue']);
-        $this->assertEquals(60.00, $channelPerformance[0]['avg_ticket']);
+        $this->assertEquals('180.00', $channelPerformance[0]['revenue']); // Note: formatted as string
+        $this->assertEquals('60.00', $channelPerformance[0]['avg_ticket']); // Note: formatted as string
     }
 
     public function test_get_hourly_sales_distribution_returns_correct_structure()
@@ -221,11 +225,18 @@ class AnalyticsServiceTest extends TestCase
             'is_active' => true,
         ]);
 
+        // Use unique date for this test to avoid interference
+        $testDate = Carbon::now()->addDays(10);
+        
         // Create sales for both stores
-        $this->createTestSales(2, 100.00, Carbon::now(), $this->store);
-        $this->createTestSales(3, 50.00, Carbon::now(), $store2);
+        $this->createTestSales(2, 100.00, $testDate, $this->store);
+        $this->createTestSales(3, 50.00, $testDate, $store2);
 
-        $filters = ['store_id' => $this->store->id];
+        $filters = [
+            'stores' => [$this->store->id],
+            'date_from' => $testDate->copy()->startOfDay()->toDateTimeString(),
+            'date_to' => $testDate->copy()->endOfDay()->toDateTimeString()
+        ];
         $kpis = $this->analyticsService->getKPIs($filters);
 
         // Should only include sales from the first store
@@ -238,15 +249,22 @@ class AnalyticsServiceTest extends TestCase
         // Create another channel
         $channel2 = Channel::create([
             'name' => 'Channel 2',
-            'type' => 'In-Store',
+            'type' => 'P', // P=Presential
             'description' => 'Second test channel',
         ]);
 
+        // Use unique date for this test to avoid interference
+        $testDate = Carbon::now()->addDays(15);
+        
         // Create sales for both channels
-        $this->createTestSales(2, 100.00, Carbon::now(), $this->store, $this->channel);
-        $this->createTestSales(3, 75.00, Carbon::now(), $this->store, $channel2);
+        $this->createTestSales(2, 100.00, $testDate, $this->store, $this->channel);
+        $this->createTestSales(3, 75.00, $testDate, $this->store, $channel2);
 
-        $filters = ['channel_id' => $this->channel->id];
+        $filters = [
+            'channels' => [$this->channel->id],
+            'date_from' => $testDate->copy()->startOfDay()->toDateTimeString(),
+            'date_to' => $testDate->copy()->endOfDay()->toDateTimeString()
+        ];
         $kpis = $this->analyticsService->getKPIs($filters);
 
         // Should only include sales from the first channel

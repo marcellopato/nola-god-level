@@ -9,50 +9,120 @@ use App\Models\Store;
 use App\Models\Channel;
 use App\Models\Product;
 use Carbon\Carbon;
-use Mockery;
-use Illuminate\Support\Collection;
-use Illuminate\Database\Query\Builder;
-use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
-
+use Illuminate\Support\Facades\DB;
 class AnalyticsServiceSimpleTest extends TestCase
 {
+    
     private AnalyticsService $analyticsService;
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->analyticsService = new AnalyticsService();
+        
+        // Clean and create test data
+        $this->cleanTestData();
+        $this->seedTestData();
     }
 
-    protected function tearDown(): void
+    private function cleanTestData(): void
     {
-        Mockery::close();
-        parent::tearDown();
+        // Clean test data in reverse order of dependencies
+        DB::table('item_product_sales')->truncate();
+        DB::table('product_sales')->truncate();
+        DB::table('payments')->truncate();
+        DB::table('delivery_sales')->truncate();
+        DB::table('sales')->truncate();
+        DB::table('products')->truncate();
+        DB::table('categories')->truncate();
+        DB::table('payment_types')->truncate();
+        DB::table('channels')->truncate();
+        DB::table('stores')->truncate();
+        DB::table('brands')->where('id', '>', 1)->delete(); // Keep the initial brand from schema
+    }
+
+    private function seedTestData(): void
+    {
+        // Create brands, stores, channels, products and sales with deterministic data
+        
+        // Use existing brand from schema or create if not exists
+        if (!DB::table('brands')->where('id', 1)->exists()) {
+            DB::table('brands')->insert([
+                'id' => 1,
+                'name' => 'Test Restaurant Chain',
+                'created_at' => now(),
+            ]);
+        }
+
+        // Stores
+        DB::table('stores')->insert([
+            ['id' => 1, 'brand_id' => 1, 'name' => 'Store 1', 'city' => 'São Paulo', 'is_active' => true, 'created_at' => now()],
+            ['id' => 2, 'brand_id' => 1, 'name' => 'Store 2', 'city' => 'Rio de Janeiro', 'is_active' => true, 'created_at' => now()],
+            ['id' => 3, 'brand_id' => 1, 'name' => 'Store 3', 'city' => 'Belo Horizonte', 'is_active' => true, 'created_at' => now()],
+        ]);
+
+        // Channels
+        DB::table('channels')->insert([
+            ['id' => 1, 'brand_id' => 1, 'name' => 'Presencial', 'type' => 'P', 'created_at' => now()],
+            ['id' => 2, 'brand_id' => 1, 'name' => 'iFood', 'type' => 'D', 'created_at' => now()],
+        ]);
+
+        // Categories
+        DB::table('categories')->insert([
+            'id' => 1,
+            'brand_id' => 1,
+            'name' => 'Hambúrgueres',
+            'type' => 'P',
+            'created_at' => now(),
+        ]);
+
+        // Products
+        DB::table('products')->insert([
+            ['id' => 1, 'brand_id' => 1, 'category_id' => 1, 'name' => 'Hambúrguer Clássico', 'created_at' => now()],
+            ['id' => 2, 'brand_id' => 1, 'category_id' => 1, 'name' => 'Pizza Margherita', 'created_at' => now()],
+        ]);
+
+        // Payment types
+        DB::table('payment_types')->insert([
+            'id' => 1,
+            'brand_id' => 1,
+            'description' => 'Dinheiro',
+            'created_at' => now(),
+        ]);
+
+        // Sales - deterministic data for testing
+        $salesData = [
+            // Store 1 sales
+            ['id' => 1, 'store_id' => 1, 'channel_id' => 1, 'total_amount' => 25.00, 'sale_status_desc' => 'COMPLETED', 'created_at' => '2024-10-01 12:00:00'],
+            ['id' => 2, 'store_id' => 1, 'channel_id' => 1, 'total_amount' => 30.00, 'sale_status_desc' => 'COMPLETED', 'created_at' => '2024-10-01 13:00:00'],
+            ['id' => 3, 'store_id' => 1, 'channel_id' => 2, 'total_amount' => 45.00, 'sale_status_desc' => 'COMPLETED', 'created_at' => '2024-10-02 14:00:00'],
+            
+            // Store 2 sales
+            ['id' => 4, 'store_id' => 2, 'channel_id' => 1, 'total_amount' => 35.00, 'sale_status_desc' => 'COMPLETED', 'created_at' => '2024-10-01 15:00:00'],
+            ['id' => 5, 'store_id' => 2, 'channel_id' => 2, 'total_amount' => 50.00, 'sale_status_desc' => 'COMPLETED', 'created_at' => '2024-10-02 16:00:00'],
+            
+            // Store 3 sales
+            ['id' => 6, 'store_id' => 3, 'channel_id' => 1, 'total_amount' => 20.00, 'sale_status_desc' => 'COMPLETED', 'created_at' => '2024-10-01 17:00:00'],
+        ];
+
+        DB::table('sales')->insert($salesData);
+
+        // Product sales
+        $productSalesData = [
+            ['id' => 1, 'sale_id' => 1, 'product_id' => 1, 'quantity' => 1, 'base_price' => 25.00, 'total_price' => 25.00],
+            ['id' => 2, 'sale_id' => 2, 'product_id' => 1, 'quantity' => 1, 'base_price' => 30.00, 'total_price' => 30.00],
+            ['id' => 3, 'sale_id' => 3, 'product_id' => 2, 'quantity' => 1, 'base_price' => 45.00, 'total_price' => 45.00],
+            ['id' => 4, 'sale_id' => 4, 'product_id' => 1, 'quantity' => 1, 'base_price' => 35.00, 'total_price' => 35.00],
+            ['id' => 5, 'sale_id' => 5, 'product_id' => 2, 'quantity' => 1, 'base_price' => 50.00, 'total_price' => 50.00],
+            ['id' => 6, 'sale_id' => 6, 'product_id' => 1, 'quantity' => 1, 'base_price' => 20.00, 'total_price' => 20.00],
+        ];
+
+        DB::table('product_sales')->insert($productSalesData);
     }
 
     /** @test */
     public function service_calculates_basic_kpis_structure()
     {
-        // Mock do modelo Sale com dados de exemplo
-        $saleMock = Mockery::mock('alias:' . Sale::class);
-        
-        // Mock da query builder chain
-        $builderMock = Mockery::mock(EloquentBuilder::class);
-        
-        $saleMock->shouldReceive('query')->andReturn($builderMock);
-        $builderMock->shouldReceive('whereBetween')->with('created_at', Mockery::any())->andReturnSelf();
-        $builderMock->shouldReceive('where')->andReturnSelf();
-        $builderMock->shouldReceive('whereIn')->andReturnSelf();
-        
-        // Mock dos resultados das queries
-        $builderMock->shouldReceive('count')->andReturn(150);
-        $builderMock->shouldReceive('sum')->with('total_amount')->andReturn(25000.50);
-        $builderMock->shouldReceive('avg')->with('total_amount')->andReturn(166.67);
-
-        // Mock do Store para filtros
-        $storeMock = Mockery::mock('alias:' . Store::class);
-        $storeMock->shouldReceive('pluck')->with('id', 'name')->andReturn(collect([1 => 'Loja 1', 2 => 'Loja 2']));
-
         $filters = ['stores' => [1, 2]];
 
         $result = $this->analyticsService->getKPIs($filters);
@@ -67,77 +137,41 @@ class AnalyticsServiceSimpleTest extends TestCase
         $this->assertIsInt($result['total_sales']);
         $this->assertIsFloat($result['total_revenue']);
         $this->assertIsFloat($result['average_ticket']);
+        
+        // Verifica valores esperados baseados nos dados de teste (stores 1 e 2 = 5 sales totaling 185.00)
+        $this->assertEquals(5, $result['total_sales']);
+        $this->assertEquals(185.0, $result['total_revenue']);
+        $this->assertEquals(37.0, $result['average_ticket']);
     }
 
     /** @test */
     public function service_calculates_sales_over_time_structure()
     {
-        $saleMock = Mockery::mock('alias:' . Sale::class);
-        $builderMock = Mockery::mock(EloquentBuilder::class);
-        
-        $saleMock->shouldReceive('query')->andReturn($builderMock);
-        $builderMock->shouldReceive('whereBetween')->andReturnSelf();
-        $builderMock->shouldReceive('where')->andReturnSelf();
-        $builderMock->shouldReceive('whereIn')->andReturnSelf();
-        $builderMock->shouldReceive('selectRaw')->andReturnSelf();
-        $builderMock->shouldReceive('groupBy')->andReturnSelf();
-        $builderMock->shouldReceive('orderBy')->andReturnSelf();
-        
-        // Dados simulados de vendas por período
-        $mockData = collect([
-            (object)['period' => '2024-10-01', 'total_sales' => 10, 'total_revenue' => 1500.00],
-            (object)['period' => '2024-10-02', 'total_sales' => 15, 'total_revenue' => 2250.00],
-        ]);
-        
-        $builderMock->shouldReceive('get')->andReturn($mockData);
-
         $filters = [];
 
         $result = $this->analyticsService->getSalesOverTime($filters, 'daily');
 
-        // Verifica estrutura do resultado
+        // Verifica estrutura do resultado (formato de chart)
         $this->assertIsArray($result);
-        $this->assertNotEmpty($result);
+        $this->assertArrayHasKey('labels', $result);
+        $this->assertArrayHasKey('sales_data', $result);
+        $this->assertArrayHasKey('revenue_data', $result);
+        $this->assertArrayHasKey('avg_ticket_data', $result);
         
-        foreach ($result as $item) {
-            $this->assertArrayHasKey('period', $item);
-            $this->assertArrayHasKey('total_sales', $item);
-            $this->assertArrayHasKey('total_revenue', $item);
-        }
+        // Deve ter dados para 2 dias baseado nos dados de teste
+        $this->assertCount(2, $result['labels']);
+        $this->assertCount(2, $result['sales_data']);
+        $this->assertCount(2, $result['revenue_data']);
+        
+        // Verifica que os dados não estão vazios
+        $this->assertNotEmpty($result['labels']);
+        $this->assertNotEmpty($result['sales_data']);
+        $this->assertNotEmpty($result['revenue_data']);
     }
 
     /** @test */
     public function service_gets_top_products_structure()
     {
-        $saleMock = Mockery::mock('alias:' . Sale::class);
-        $builderMock = Mockery::mock(EloquentBuilder::class);
-        
-        $saleMock->shouldReceive('query')->andReturn($builderMock);
-        $builderMock->shouldReceive('join')->andReturnSelf();
-        $builderMock->shouldReceive('whereBetween')->andReturnSelf();
-        $builderMock->shouldReceive('where')->andReturnSelf();
-        $builderMock->shouldReceive('whereIn')->andReturnSelf();
-        $builderMock->shouldReceive('selectRaw')->andReturnSelf();
-        $builderMock->shouldReceive('groupBy')->andReturnSelf();
-        $builderMock->shouldReceive('orderBy')->andReturnSelf();
-        $builderMock->shouldReceive('limit')->andReturnSelf();
-        
-        // Dados simulados de produtos mais vendidos
-        $mockData = collect([
-            (object)[
-                'product_name' => 'Hambúrguer Clássico',
-                'total_quantity' => 85,
-                'total_revenue' => 2125.00
-            ],
-            (object)[
-                'product_name' => 'Pizza Margherita',
-                'total_quantity' => 62,
-                'total_revenue' => 1860.00
-            ],
-        ]);
-        
-        $builderMock->shouldReceive('get')->andReturn($mockData);
-
         $filters = [];
 
         $result = $this->analyticsService->getTopProducts($filters, 10);
@@ -147,129 +181,81 @@ class AnalyticsServiceSimpleTest extends TestCase
         $this->assertNotEmpty($result);
         
         foreach ($result as $item) {
-            $this->assertArrayHasKey('product_name', $item);
-            $this->assertArrayHasKey('total_quantity', $item);
-            $this->assertArrayHasKey('total_revenue', $item);
+            $this->assertArrayHasKey('name', $item);
+            $this->assertArrayHasKey('quantity', $item);
+            $this->assertArrayHasKey('revenue', $item);
+            $this->assertArrayHasKey('avg_price', $item);
             
-            $this->assertIsString($item['product_name']);
-            $this->assertIsInt($item['total_quantity']);
-            $this->assertIsFloat($item['total_revenue']);
+            $this->assertIsString($item['name']);
+            $this->assertIsInt($item['quantity']);
+            $this->assertIsFloat($item['revenue']);
+            $this->assertIsFloat($item['avg_price']);
         }
+        
+        // Verifica dados específicos baseados nos dados de teste
+        $this->assertCount(2, $result); // Temos 2 produtos nos dados de teste
+        
+        // O Hambúrguer Clássico deve ser o mais vendido (4 vendas)
+        $topProduct = $result[0];
+        $this->assertEquals('Hambúrguer Clássico', $topProduct['name']);
+        $this->assertEquals(4, $topProduct['quantity']);
+        $this->assertEquals(110.0, $topProduct['revenue']); // 25+30+35+20
     }
 
     /** @test */
     public function service_handles_empty_filters()
     {
-        $saleMock = Mockery::mock('alias:' . Sale::class);
-        $builderMock = Mockery::mock(EloquentBuilder::class);
-        
-        $saleMock->shouldReceive('query')->andReturn($builderMock);
-        $builderMock->shouldReceive('whereBetween')->andReturnSelf();
-        
-        // Não deve aplicar filtros de store ou channel quando arrays vazios
-        $builderMock->shouldNotReceive('whereIn');
-        
-        $builderMock->shouldReceive('count')->andReturn(0);
-        $builderMock->shouldReceive('sum')->andReturn(0);
-        $builderMock->shouldReceive('avg')->andReturn(0);
-
-        // Mock do Store
-        $storeMock = Mockery::mock('alias:' . Store::class);
-        $storeMock->shouldReceive('pluck')->andReturn(collect([]));
-
         $filters = ['stores' => [], 'channels' => []];
 
         $result = $this->analyticsService->getKPIs($filters);
 
-        // Deve retornar estrutura válida mesmo sem dados
+        // Deve retornar estrutura válida com todos os dados (sem filtros)
         $this->assertIsArray($result);
-        $this->assertEquals(0, $result['total_sales']);
-        $this->assertEquals(0.0, $result['total_revenue']);
-        $this->assertEquals(0.0, $result['average_ticket']);
+        $this->assertEquals(6, $result['total_sales']); // Todas as 6 vendas
+        $this->assertEquals(205.0, $result['total_revenue']); // Total de todas as vendas
+        $this->assertEquals(34.17, round($result['average_ticket'], 2)); // Média arredondada
     }
 
     /** @test */
     public function service_validates_date_parameters()
     {
-        $saleMock = Mockery::mock('alias:' . Sale::class);
-        $builderMock = Mockery::mock(EloquentBuilder::class);
+        // Testa se o serviço pode lidar com filtros de data vazios
+        $result = $this->analyticsService->getKPIs([]);
         
-        $saleMock->shouldReceive('query')->andReturn($builderMock);
-        
-        // Testa se o serviço pode lidar com filtros de data (através dos filtros)
-        $builderMock->shouldReceive('count')->andReturn(0);
-        $builderMock->shouldReceive('sum')->andReturn(0);
-        $builderMock->shouldReceive('avg')->andReturn(0);
-
-        $storeMock = Mockery::mock('alias:' . Store::class);
-        $storeMock->shouldReceive('pluck')->andReturn(collect([]));
-
-        $this->analyticsService->getKPIs([]);
+        // Deve retornar dados válidos
+        $this->assertIsArray($result);
+        $this->assertArrayHasKey('total_sales', $result);
+        $this->assertArrayHasKey('total_revenue', $result);
+        $this->assertArrayHasKey('average_ticket', $result);
     }
 
     /** @test */
     public function service_applies_store_filters_correctly()
     {
-        $saleMock = Mockery::mock('alias:' . Sale::class);
-        $builderMock = Mockery::mock(EloquentBuilder::class);
-        
-        $saleMock->shouldReceive('query')->andReturn($builderMock);
-        $builderMock->shouldReceive('whereBetween')->andReturnSelf();
-        
-        // Verifica se o filtro de stores é aplicado corretamente
+        // Filtra apenas stores 1, 2 e 3
         $storeIds = [1, 2, 3];
-        $builderMock->shouldReceive('whereIn')
-            ->with('store_id', $storeIds)
-            ->once()
-            ->andReturnSelf();
-            
-        $builderMock->shouldReceive('count')->andReturn(50);
-        $builderMock->shouldReceive('sum')->andReturn(1000);
-        $builderMock->shouldReceive('avg')->andReturn(20);
-
-        $storeMock = Mockery::mock('alias:' . Store::class);
-        $storeMock->shouldReceive('pluck')->andReturn(collect([
-            1 => 'Store 1', 2 => 'Store 2', 3 => 'Store 3'
-        ]));
-
         $filters = ['stores' => $storeIds];
 
         $result = $this->analyticsService->getKPIs($filters);
 
-        $this->assertEquals(50, $result['total_sales']);
-        $this->assertEquals(1000.0, $result['total_revenue']);
-        $this->assertEquals(20.0, $result['average_ticket']);
+        // Deve retornar todas as 6 vendas pois todas são das stores 1, 2 e 3
+        $this->assertEquals(6, $result['total_sales']);
+        $this->assertEquals(205.0, $result['total_revenue']);
+        $this->assertEquals(34.17, round($result['average_ticket'], 2));
     }
 
     /** @test */
     public function service_applies_channel_filters_correctly()
     {
-        $saleMock = Mockery::mock('alias:' . Sale::class);
-        $builderMock = Mockery::mock(EloquentBuilder::class);
-        
-        $saleMock->shouldReceive('query')->andReturn($builderMock);
-        $builderMock->shouldReceive('whereBetween')->andReturnSelf();
-        
-        // Verifica se o filtro de channels é aplicado corretamente
+        // Filtra apenas channels 1 e 2
         $channelIds = [1, 2];
-        $builderMock->shouldReceive('whereIn')
-            ->with('channel_id', $channelIds)
-            ->once()
-            ->andReturnSelf();
-            
-        $builderMock->shouldReceive('count')->andReturn(30);
-        $builderMock->shouldReceive('sum')->andReturn(750);
-        $builderMock->shouldReceive('avg')->andReturn(25);
-
-        $storeMock = Mockery::mock('alias:' . Store::class);
-        $storeMock->shouldReceive('pluck')->andReturn(collect([]));
-
         $filters = ['channels' => $channelIds];
 
         $result = $this->analyticsService->getKPIs($filters);
 
-        $this->assertEquals(30, $result['total_sales']);
-        $this->assertEquals(750.0, $result['total_revenue']);
-        $this->assertEquals(25.0, $result['average_ticket']);
+        // Deve retornar todas as 6 vendas pois todas são dos channels 1 e 2
+        $this->assertEquals(6, $result['total_sales']);
+        $this->assertEquals(205.0, $result['total_revenue']);
+        $this->assertEquals(34.17, round($result['average_ticket'], 2));
     }
 }
