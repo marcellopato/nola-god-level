@@ -45,16 +45,28 @@ class Dashboard extends Component
     public function updatedSelectedStore()
     {
         $this->loadData();
+        $this->dispatch('dataRefreshed', [
+            'salesOverTime' => $this->salesOverTime,
+            'hourlyDistribution' => $this->hourlyDistribution
+        ]);
     }
 
     public function updatedSelectedChannel()
     {
         $this->loadData();
+        $this->dispatch('dataRefreshed', [
+            'salesOverTime' => $this->salesOverTime,
+            'hourlyDistribution' => $this->hourlyDistribution
+        ]);
     }
 
     public function updatedSelectedPeriod()
     {
         $this->loadData();
+        $this->dispatch('dataRefreshed', [
+            'salesOverTime' => $this->salesOverTime,
+            'hourlyDistribution' => $this->hourlyDistribution
+        ]);
     }
 
     public function loadData()
@@ -76,7 +88,10 @@ class Dashboard extends Component
         $analyticsService->clearCache();
         $this->loadData();
         
-        $this->dispatch('dataRefreshed');
+        $this->dispatch('dataRefreshed', [
+            'salesOverTime' => $this->salesOverTime,
+            'hourlyDistribution' => $this->hourlyDistribution
+        ]);
     }
 
     public function setDateRange($range)
@@ -107,6 +122,10 @@ class Dashboard extends Component
         }
         
         $this->loadData();
+        $this->dispatch('dataRefreshed', [
+            'salesOverTime' => $this->salesOverTime,
+            'hourlyDistribution' => $this->hourlyDistribution
+        ]);
     }
 
     private function getFilters(): array
