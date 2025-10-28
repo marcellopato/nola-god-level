@@ -16,6 +16,7 @@ class Dashboard extends Component
     public $selectedStore = '';
     public $selectedChannel = '';
     public $selectedPeriod = 'daily';
+    public $activeDateRange = 'last30days';
     
     public $kpis = [];
     public $salesOverTime = [];
@@ -34,12 +35,22 @@ class Dashboard extends Component
 
     public function updatedDateFrom()
     {
+        $this->activeDateRange = null; // Limpa o período ativo quando mudança manual
         $this->loadData();
+        $this->dispatch('dataRefreshed', [
+            'salesOverTime' => $this->salesOverTime,
+            'hourlyDistribution' => $this->hourlyDistribution
+        ]);
     }
 
     public function updatedDateTo()
     {
+        $this->activeDateRange = null; // Limpa o período ativo quando mudança manual
         $this->loadData();
+        $this->dispatch('dataRefreshed', [
+            'salesOverTime' => $this->salesOverTime,
+            'hourlyDistribution' => $this->hourlyDistribution
+        ]);
     }
 
     public function updatedSelectedStore()
@@ -96,6 +107,8 @@ class Dashboard extends Component
 
     public function setDateRange($range)
     {
+        $this->activeDateRange = $range;
+        
         switch ($range) {
             case 'today':
                 $this->dateFrom = $this->dateTo = Carbon::now()->toDateString();

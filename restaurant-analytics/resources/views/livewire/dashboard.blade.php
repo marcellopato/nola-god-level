@@ -14,19 +14,19 @@
                     <!-- Date Range Selector -->
                     <div class="flex gap-2">
                         <button wire:click="setDateRange('today')" 
-                                class="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md">
+                                class="px-3 py-1 text-xs rounded-md {{ $activeDateRange === 'today' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 hover:bg-gray-200' }}">
                             Hoje
                         </button>
                         <button wire:click="setDateRange('last7days')" 
-                                class="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md">
+                                class="px-3 py-1 text-xs rounded-md {{ $activeDateRange === 'last7days' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 hover:bg-gray-200' }}">
                             7 dias
                         </button>
                         <button wire:click="setDateRange('last30days')" 
-                                class="px-3 py-1 text-xs bg-indigo-100 text-indigo-700 rounded-md">
+                                class="px-3 py-1 text-xs rounded-md {{ $activeDateRange === 'last30days' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 hover:bg-gray-200' }}">
                             30 dias
                         </button>
                         <button wire:click="setDateRange('thisMonth')" 
-                                class="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md">
+                                class="px-3 py-1 text-xs rounded-md {{ $activeDateRange === 'thisMonth' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 hover:bg-gray-200' }}">
                             Este mês
                         </button>
                     </div>
