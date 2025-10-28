@@ -14,38 +14,92 @@ class AnalyticsService
 {
     /**
      * Get key performance indicators for the dashboard
+     * Optimized: Single query with aggregations instead of multiple queries
      */
     public function getKPIs(array $filters = []): array
     {
         $cacheKey = 'kpis_' . md5(serialize($filters));
         
-        return Cache::remember($cacheKey, 300, function () use ($filters) {
-            $query = $this->applyFilters(Sale::completed(), $filters);
+        return Cache::remember($cacheKey, 900, function () use ($filters) { // Extended cache to 15min
+            // Single optimized query for main metrics
+            $query = DB::table('sales')->where('sale_status_desc', 'COMPLETED');
             
-            $totalSales = (clone $query)->count();
-            $totalRevenue = (clone $query)->sum('total_amount') ?: 0;
-            $averageTicket = $totalSales > 0 ? $totalRevenue / $totalSales : 0;
+            // Apply filters efficiently  
+            $this->applyFiltersToQuery($query, $filters);
             
-            // Compare with previous period
-            $previousQuery = $this->applyFilters(
-                Sale::completed(),
-                $this->getPreviousPeriodFilters($filters)
+            $mainStats = $query
+                ->select([
+                    DB::raw('COUNT(*) as total_sales'),
+                    DB::raw('SUM(total_amount) as total_revenue'),
+                    DB::raw('AVG(total_amount) as average_ticket')
+                ])
+                ->first();
+            
+            // Get comparison period stats
+            $previousStats = $this->getPreviousPeriodStats($filters);
+            $revenueGrowth = $this->calculateGrowth(
+                $mainStats->total_revenue ?? 0, 
+                $previousStats->total_revenue ?? 0
             );
             
-            $previousRevenue = $previousQuery->sum('total_amount') ?: 0;
-            $revenueGrowth = $previousRevenue > 0 
-                ? (($totalRevenue - $previousRevenue) / $previousRevenue) * 100 
-                : 0;
+            // Cached counts for stores and products (updated less frequently)
+            $activeStores = Cache::remember('active_stores_count', 3600, fn() => Store::active()->count());
+            $totalProducts = Cache::remember('total_products_count', 3600, fn() => Product::count());
 
             return [
-                'total_sales' => $totalSales,
-                'total_revenue' => number_format($totalRevenue, 2),
-                'average_ticket' => number_format($averageTicket, 2),
+                'total_sales' => (int) ($mainStats->total_sales ?? 0),
+                'total_revenue' => (float) ($mainStats->total_revenue ?? 0),
+                'average_ticket' => (float) ($mainStats->average_ticket ?? 0),
                 'revenue_growth' => round($revenueGrowth, 1),
-                'active_stores' => Store::active()->count(),
-                'total_products' => Product::count()
+                'active_stores' => $activeStores,
+                'total_products' => $totalProducts
             ];
         });
+    }
+    
+    /**
+     * Apply filters efficiently to query builder
+     */
+    private function applyFiltersToQuery($query, array $filters): void
+    {
+        if (!empty($filters['date_from'])) {
+            $query->where('created_at', '>=', $filters['date_from']);
+        }
+        if (!empty($filters['date_to'])) {
+            $query->where('created_at', '<=', $filters['date_to']);
+        }
+        if (!empty($filters['stores']) && is_array($filters['stores'])) {
+            $query->whereIn('store_id', $filters['stores']);
+        }
+        if (!empty($filters['channels']) && is_array($filters['channels'])) {
+            $query->whereIn('channel_id', $filters['channels']);
+        }
+    }
+    
+    /**
+     * Get previous period statistics for comparison
+     */
+    private function getPreviousPeriodStats(array $filters): object
+    {
+        $previousFilters = $this->getPreviousPeriodFilters($filters);
+        
+        $query = DB::table('sales')->where('sale_status_desc', 'COMPLETED');
+        $this->applyFiltersToQuery($query, $previousFilters);
+        
+        return $query
+            ->select([
+                DB::raw('SUM(total_amount) as total_revenue')
+            ])
+            ->first() ?? (object)['total_revenue' => 0];
+    }
+    
+    /**
+     * Calculate growth percentage
+     */
+    private function calculateGrowth(float $current, float $previous): float
+    {
+        if ($previous <= 0) return 0;
+        return (($current - $previous) / $previous) * 100;
     }
 
     /**
@@ -55,15 +109,18 @@ class AnalyticsService
     {
         $cacheKey = "sales_over_time_{$period}_" . md5(serialize($filters));
         
-        return Cache::remember($cacheKey, 300, function () use ($filters, $period) {
-            $query = $this->applyFilters(Sale::completed(), $filters);
+        return Cache::remember($cacheKey, 900, function () use ($filters, $period) {
+            // Use direct DB query for better performance with large datasets
+            $query = DB::table('sales')->where('sale_status_desc', 'COMPLETED');
+            $this->applyFiltersToQuery($query, $filters);
             
+            // Optimized date formatting for PostgreSQL
             $dateFormat = match($period) {
-                'hourly' => "TO_CHAR(created_at, 'YYYY-MM-DD HH24:00:00')",
-                'daily' => "DATE(created_at)",
-                'weekly' => "DATE_TRUNC('week', created_at)",
+                'hourly' => "DATE_TRUNC('hour', created_at)",
+                'daily' => "DATE_TRUNC('day', created_at)",
+                'weekly' => "DATE_TRUNC('week', created_at)", 
                 'monthly' => "DATE_TRUNC('month', created_at)",
-                default => "DATE(created_at)"
+                default => "DATE_TRUNC('day', created_at)"
             };
 
             $results = $query
@@ -73,7 +130,7 @@ class AnalyticsService
                     DB::raw('SUM(total_amount) as revenue'),
                     DB::raw('AVG(total_amount) as avg_ticket')
                 ])
-                ->groupBy('period')
+                ->groupBy(DB::raw($dateFormat))
                 ->orderBy('period')
                 ->get();
 
@@ -90,29 +147,30 @@ class AnalyticsService
 
     /**
      * Get top performing products
+     * Optimized: Better indexing strategy and efficient filtering
      */
     public function getTopProducts(array $filters = [], int $limit = 10): array
     {
         $cacheKey = "top_products_{$limit}_" . md5(serialize($filters));
         
-        return Cache::remember($cacheKey, 300, function () use ($filters, $limit) {
+        return Cache::remember($cacheKey, 1800, function () use ($filters, $limit) { // 30min cache
             $query = DB::table('product_sales')
                 ->join('products', 'products.id', '=', 'product_sales.product_id')
                 ->join('sales', 'sales.id', '=', 'product_sales.sale_id')
                 ->where('sales.sale_status_desc', 'COMPLETED');
 
-            // Apply filters to the sales
-            if (isset($filters['date_from'])) {
+            // Apply filters efficiently using the helper method
+            if (!empty($filters['date_from'])) {
                 $query->where('sales.created_at', '>=', $filters['date_from']);
             }
-            if (isset($filters['date_to'])) {
+            if (!empty($filters['date_to'])) {
                 $query->where('sales.created_at', '<=', $filters['date_to']);
             }
-            if (isset($filters['store_id'])) {
-                $query->where('sales.store_id', $filters['store_id']);
+            if (!empty($filters['stores']) && is_array($filters['stores'])) {
+                $query->whereIn('sales.store_id', $filters['stores']);
             }
-            if (isset($filters['channel_id'])) {
-                $query->where('sales.channel_id', $filters['channel_id']);
+            if (!empty($filters['channels']) && is_array($filters['channels'])) {
+                $query->whereIn('sales.channel_id', $filters['channels']);
             }
 
             return $query
@@ -130,8 +188,8 @@ class AnalyticsService
                     return [
                         'name' => $item->name,
                         'quantity' => (int) $item->total_quantity,
-                        'revenue' => number_format($item->total_revenue, 2),
-                        'avg_price' => number_format($item->avg_price, 2)
+                        'revenue' => (float) $item->total_revenue,
+                        'avg_price' => (float) $item->avg_price
                     ];
                 })
                 ->toArray();

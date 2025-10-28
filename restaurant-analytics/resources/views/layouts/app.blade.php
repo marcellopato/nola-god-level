@@ -15,6 +15,9 @@
     <!-- Chart.js -->  
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
+    <!-- Alpine.js -->
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    
     @livewireStyles
 </head>
 <body class="font-sans antialiased bg-gray-50">
@@ -25,8 +28,8 @@
                 <div class="flex justify-between h-16">
                     <div class="flex items-center">
                         <div class="flex-shrink-0">
-                            <h1 class="text-xl font-bold text-gray-900">
-                                🍔 Restaurant Analytics
+                            <h1 class="text-lg sm:text-xl font-bold text-gray-900">
+                                🍔 <span class="hidden xs:inline">Restaurant</span> Analytics
                             </h1>
                         </div>
                         <div class="hidden sm:ml-6 sm:flex sm:space-x-8">
@@ -39,8 +42,8 @@
                         </div>
                     </div>
                     <div class="flex items-center">
-                        <span class="text-sm text-gray-500">
-                            Bem-vinda, Maria! 👋
+                        <span class="text-xs sm:text-sm text-gray-500">
+                            <span class="hidden sm:inline">Bem-vinda, </span>Maria! 👋
                         </span>
                     </div>
                 </div>
@@ -48,7 +51,7 @@
         </nav>
 
         <!-- Main Content -->
-        <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <main class="max-w-7xl mx-auto py-4 px-4 sm:py-6 sm:px-6 lg:px-8">
             {{ $slot }}
         </main>
     </div>
@@ -64,17 +67,39 @@
         // Listen for Livewire events
         document.addEventListener('livewire:init', () => {
             Livewire.on('dataRefreshed', () => {
-                // Show success message
-                const toast = document.createElement('div');
-                toast.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-md shadow-lg z-50';
-                toast.textContent = 'Dados atualizados com sucesso!';
-                document.body.appendChild(toast);
-                
-                setTimeout(() => {
-                    toast.remove();
-                }, 3000);
+                showNotification('Dados atualizados com sucesso!', 'success');
+            });
+            
+            Livewire.on('showNotification', (data) => {
+                showNotification(data.message, data.type);
             });
         });
+        
+        function showNotification(message, type = 'success') {
+            const toast = document.createElement('div');
+            const bgColor = type === 'success' ? 'bg-green-500' : 
+                           type === 'error' ? 'bg-red-500' : 
+                           type === 'warning' ? 'bg-yellow-500' : 'bg-blue-500';
+                           
+            toast.className = `fixed top-4 right-4 ${bgColor} text-white px-4 py-2 rounded-md shadow-lg z-50 transition-all duration-300 transform translate-x-full`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            // Animate in
+            setTimeout(() => {
+                toast.classList.remove('translate-x-full');
+            }, 100);
+            
+            // Animate out and remove
+            setTimeout(() => {
+                toast.classList.add('translate-x-full');
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.remove();
+                    }
+                }, 300);
+            }, 3000);
+        }
     </script>
 </body>
 </html>
