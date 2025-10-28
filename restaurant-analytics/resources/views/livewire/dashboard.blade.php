@@ -14,19 +14,19 @@
                     <!-- Date Range Selector -->
                     <div class="flex gap-2">
                         <button wire:click="setDateRange('today')" 
-                                class="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md">
+                                class="px-3 py-1 text-xs rounded-md {{ $activeDateRange === 'today' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 hover:bg-gray-200' }}">
                             Hoje
                         </button>
                         <button wire:click="setDateRange('last7days')" 
-                                class="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md">
+                                class="px-3 py-1 text-xs rounded-md {{ $activeDateRange === 'last7days' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 hover:bg-gray-200' }}">
                             7 dias
                         </button>
                         <button wire:click="setDateRange('last30days')" 
-                                class="px-3 py-1 text-xs bg-indigo-100 text-indigo-700 rounded-md">
+                                class="px-3 py-1 text-xs rounded-md {{ $activeDateRange === 'last30days' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 hover:bg-gray-200' }}">
                             30 dias
                         </button>
                         <button wire:click="setDateRange('thisMonth')" 
-                                class="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md">
+                                class="px-3 py-1 text-xs rounded-md {{ $activeDateRange === 'thisMonth' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 hover:bg-gray-200' }}">
                             Este mês
                         </button>
                     </div>
@@ -133,7 +133,7 @@
                     <div class="ml-5 w-0 flex-1">
                         <dl>
                             <dt class="text-sm font-medium text-gray-500 truncate">Ticket Médio</dt>
-                            <dd class="text-lg font-medium text-gray-900">R$ {{ $kpis['average_ticket'] ?? '0,00' }}</dd>
+                            <dd class="text-lg font-medium text-gray-900">R$ {{ $kpis['avg_ticket'] ?? '0,00' }}</dd>
                         </dl>
                     </div>
                 </div>
@@ -258,26 +258,35 @@
         document.addEventListener('livewire:initialized', () => {
             let salesChart, hourlyChart;
             
-            function initCharts() {
+            function initCharts(salesData = null, hourlyData = null) {
+                // Use provided data or fallback to initial server data
+                const salesOverTime = salesData || @json($salesOverTime ?? ['labels' => [], 'sales_data' => [], 'revenue_data' => []]);
+                const hourlyDistribution = hourlyData || @json($hourlyDistribution ?? ['labels' => [], 'sales_data' => []]);
+                
+                console.log('Initializing charts with data:', { salesOverTime, hourlyDistribution });
+                
                 // Sales Over Time Chart
                 const salesCtx = document.getElementById('salesOverTimeChart');
                 if (salesCtx) {
-                    if (salesChart) salesChart.destroy();
+                    if (salesChart) {
+                        salesChart.destroy();
+                        salesChart = null;
+                    }
                     
                     salesChart = new Chart(salesCtx, {
                         type: 'line',
                         data: {
-                            labels: @json($salesOverTime['labels'] ?? []),
+                            labels: salesOverTime.labels || [],
                             datasets: [{
                                 label: 'Vendas',
-                                data: @json($salesOverTime['sales_data'] ?? []),
+                                data: salesOverTime.sales_data || [],
                                 borderColor: 'rgb(59, 130, 246)',
                                 backgroundColor: 'rgba(59, 130, 246, 0.1)',
                                 tension: 0.1,
                                 yAxisID: 'y'
                             }, {
                                 label: 'Receita (R$)',
-                                data: @json($salesOverTime['revenue_data'] ?? []),
+                                data: salesOverTime.revenue_data || [],
                                 borderColor: 'rgb(16, 185, 129)',
                                 backgroundColor: 'rgba(16, 185, 129, 0.1)',
                                 tension: 0.1,
@@ -296,11 +305,19 @@
                                     type: 'linear',
                                     display: true,
                                     position: 'left',
+                                    title: {
+                                        display: true,
+                                        text: 'Número de Vendas'
+                                    }
                                 },
                                 y1: {
                                     type: 'linear',
                                     display: true,
                                     position: 'right',
+                                    title: {
+                                        display: true,
+                                        text: 'Receita (R$)'
+                                    },
                                     grid: {
                                         drawOnChartArea: false,
                                     },
@@ -313,15 +330,18 @@
                 // Hourly Distribution Chart
                 const hourlyCtx = document.getElementById('hourlyChart');
                 if (hourlyCtx) {
-                    if (hourlyChart) hourlyChart.destroy();
+                    if (hourlyChart) {
+                        hourlyChart.destroy();
+                        hourlyChart = null;
+                    }
                     
                     hourlyChart = new Chart(hourlyCtx, {
                         type: 'bar',
                         data: {
-                            labels: @json($hourlyDistribution['labels'] ?? []),
+                            labels: hourlyDistribution.labels || [],
                             datasets: [{
                                 label: 'Vendas por Hora',
-                                data: @json($hourlyDistribution['sales_data'] ?? []),
+                                data: hourlyDistribution.sales_data || [],
                                 backgroundColor: 'rgba(147, 51, 234, 0.8)',
                                 borderColor: 'rgb(147, 51, 234)',
                                 borderWidth: 1
@@ -332,7 +352,11 @@
                             maintainAspectRatio: false,
                             scales: {
                                 y: {
-                                    beginAtZero: true
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Número de Vendas'
+                                    }
                                 }
                             }
                         }
@@ -340,12 +364,17 @@
                 }
             }
             
-            // Initialize charts
+            // Initialize charts with initial data
             initCharts();
             
-            // Reinitialize charts when data changes
-            Livewire.on('dataRefreshed', () => {
-                setTimeout(initCharts, 100);
+            // Listen for custom dataRefreshed event with new data
+            Livewire.on('dataRefreshed', (eventData) => {
+                console.log('Data refresh event received:', eventData);
+                const data = Array.isArray(eventData) ? eventData[0] : eventData;
+                
+                setTimeout(() => {
+                    initCharts(data.salesOverTime, data.hourlyDistribution);
+                }, 100);
             });
         });
     </script>
